@@ -39,9 +39,10 @@ Every capture is attributed to your agent identity and hash-chained in the ledge
 
 ## Commands
 
-- `/brain-wrap` — wrap the current session into the brain.
+The brain-wrap **skill** auto-fires near session exit — no command needed. Manual utilities:
+
 - `/brain-status` — what's in your brain + sync state.
-- `/brain-push [folder]` — push local notes into the governed review queue.
+- `/brain-push [folder]` — upload local notes/files into the governed brain (searchable immediately).
 
 ## Why it's different
 

@@ -31,10 +31,10 @@ BODY="$(jq -nc --arg q "$PROMPT" '{tool:"brain.search",args:{query:$q,recall:tru
 RESP="$(curl -fsS --max-time 6 -X POST -H "content-type: application/json" -H "Authorization: Bearer $AGENT_KEY" \
   --data "$BODY" "$BRAIN_URL/api/mcp/tools" 2>/dev/null)" || exit 0
 COUNT="$(printf '%s' "$RESP" | jq -r '(.data.recall // []) | length' 2>/dev/null || echo 0)"
-WITHHELD="$(printf '%s' "$RESP" | jq -r '((.data.withheld // []) | length)' 2>/dev/null || echo 0)"
+WITHHELD="$(printf '%s' "$RESP" | jq -r '.data.withheld // 0' 2>/dev/null || echo 0)"
 T1=$(now_ms)
 if [ "${COUNT:-0}" -gt 0 ]; then
   echo "[aivm-brain] governed recall — ${COUNT} snippet(s) in $((T1 - T0))ms, ${WITHHELD:-0} withheld by policy. Treat as context; cite what you use:"
-  printf '%s' "$RESP" | jq -r '.data.recall[] | "• [\(.domain)] \(.snippet)"' 2>/dev/null || true
+  printf '%s' "$RESP" | jq -r '.data.recall[] | "• \(.title // .domain) — \(.snippet)"' 2>/dev/null || true
 fi
 exit 0

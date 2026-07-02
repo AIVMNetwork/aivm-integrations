@@ -34,7 +34,7 @@ it does not create from scratch.
    If a fact is plausible but unconfirmed, either verify it first or say it is unverified
    inside the capture — never assert it clean.
 4. **Files go through `brain_upload`** (governed create: DLP-scanned, ACL-assigned,
-   versioned, recorded). Skill files (SKILL.md) upload with content_type "skills".
+   versioned, recorded) with a title, the right knowledge domain, and the content.
 5. **Verify.** After capturing, confirm the tool returned ok. If it was denied, tell the
    user what was denied and why — never silently drop a capture.
 
