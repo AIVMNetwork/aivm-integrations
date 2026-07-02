@@ -21,7 +21,10 @@ it does not create from scratch.
 
 1. **Search before you create.** Call `brain_search` for the concept first. If the brain
    already holds it, capture an update/correction that references it — never a duplicate.
-2. **Capture with the `brain_capture` tool** — one capture per outcome:
+2. **Capture with the `brain_capture` tool, pinned** — one capture per durable outcome. Set
+   `pinned: true` for decisions, lessons, fixes, and stable facts: a pinned capture is promoted to a
+   searchable governed document, so future sessions (yours or a teammate's) can `brain_search` it. An
+   un-pinned capture is a transient session episode (re-attached at session start, but not searchable).
    - 15–80 words, contextually rich, not an atomic fragment.
      WRONG: "Uses Postgres."
      CORRECT: "We chose Postgres + pgvector over a dedicated vector DB (June 2026) because

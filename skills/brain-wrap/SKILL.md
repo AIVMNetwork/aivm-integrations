@@ -21,8 +21,9 @@ raw turns. Sessions are disposable; the memory isn't.
 3. **Update the knowledge, not just the log.** For any concept that is now different,
    capture the correction/update against the existing memory (search first — extend, don't
    duplicate). A superseded fact should be updated, not left to contradict the new one.
-4. **Pin what matters.** Mark the session summary and any load-bearing decisions as pinned
-   so they surface first in future recall.
+4. **Pin what matters — pinning is what makes it searchable.** Set `pinned: true` on the session
+   summary and any load-bearing decisions: a pinned capture becomes a searchable governed document,
+   so a fresh `brain_search` finds it. Leave routine chatter un-pinned (session-episode only).
 5. **Verify + report.** Confirm captures returned ok, then end with a short fixed-format
    report: `Wrapped: N decisions, M lessons, K open threads captured to the brain.` If
    nothing durable happened, say exactly that — do not manufacture a summary.
