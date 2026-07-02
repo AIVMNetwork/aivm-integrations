@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "aivm-brain": {
+      "command": "npx",
+      "args": ["-y", "@aivm/brain@0.2.8", "serve"]
+    }
+  }
+}

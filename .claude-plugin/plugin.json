@@ -1,0 +1,14 @@
+{
+  "name": "brain-memory",
+  "version": "0.1.0",
+  "description": "Brain by AIVM — governed persistent memory for Claude Code. Auto-recall on session start, ACL-filtered recall per prompt, session wrap + sync on exit; every access recorded to a tamper-evident ledger.",
+  "author": {
+    "name": "AIVM"
+  },
+  "homepage": "https://brain.aivm.io",
+  "repository": "https://github.com/AIVMNetwork/aivm-integrations",
+  "license": "MIT",
+  "keywords": ["memory", "knowledge", "governed", "mcp", "brain"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}
