@@ -3,7 +3,14 @@
 # Best-effort: never blocks the prompt (--max-time 5, exit 0 on any failure).
 # Emits ONLY the synthesized answer + a withheld COUNT — never a withheld body.
 set -uo pipefail
-T0=$(date +%s%3N 2>/dev/null || date +%s000)
+# Portable epoch-milliseconds (macOS BSD date has no %N; GNU/Linux does).
+now_ms() {
+  local t
+  t=$(date +%s%3N 2>/dev/null)
+  case "$t" in (*[!0-9]*|"") ;; (*) echo "$t"; return;; esac
+  if command -v python3 >/dev/null 2>&1; then python3 -c 'import time;print(int(time.time()*1000))'; else echo "$(($(date +%s)*1000))"; fi
+}
+T0=$(now_ms)
 
 BRAIN_URL="${AIVM_BRAIN_URL:-}"
 [ -z "$BRAIN_URL" ] && BRAIN_URL="$(jq -r '.brainUrl // empty' "$HOME/.aivm/agent/config.json" 2>/dev/null || true)"
@@ -18,14 +25,16 @@ PROMPT="$(cat 2>/dev/null | jq -r '.prompt // empty' 2>/dev/null || true)"
 # Skip trivial prompts — a recall round-trip on "yes"/"continue" is wasted latency and tokens.
 [ "${#PROMPT}" -lt 12 ] && exit 0
 
-BODY="$(jq -nc --arg q "$PROMPT" '{tool:"brain.search",args:{query:$q}}' 2>/dev/null)" || exit 0
-RESP="$(curl -fsS --max-time 5 -X POST -H "content-type: application/json" -H "Authorization: Bearer $AGENT_KEY" \
+# Fast RECALL mode: retrieval-only, bounded snippets, no LLM synthesis — synthesized search is
+# 5-30s (too slow for a per-prompt hook), so this uses the recall path (local retrieval, top-K).
+BODY="$(jq -nc --arg q "$PROMPT" '{tool:"brain.search",args:{query:$q,recall:true,topK:5}}' 2>/dev/null)" || exit 0
+RESP="$(curl -fsS --max-time 6 -X POST -H "content-type: application/json" -H "Authorization: Bearer $AGENT_KEY" \
   --data "$BODY" "$BRAIN_URL/api/mcp/tools" 2>/dev/null)" || exit 0
-ANSWER="$(printf '%s' "$RESP" | jq -r '.result.answer // .answer // empty' 2>/dev/null || true)"
-WITHHELD="$(printf '%s' "$RESP" | jq -r '((.result.withheld // .withheld) // []) | length' 2>/dev/null || echo 0)"
-T1=$(date +%s%3N 2>/dev/null || date +%s000)
-if [ -n "$ANSWER" ]; then
-  echo "[aivm-brain] governed recall ($((T1 - T0))ms, ${WITHHELD:-0} source(s) withheld by policy) — treat as context, cite what you use:"
-  echo "$ANSWER"
+COUNT="$(printf '%s' "$RESP" | jq -r '(.data.recall // []) | length' 2>/dev/null || echo 0)"
+WITHHELD="$(printf '%s' "$RESP" | jq -r '((.data.withheld // []) | length)' 2>/dev/null || echo 0)"
+T1=$(now_ms)
+if [ "${COUNT:-0}" -gt 0 ]; then
+  echo "[aivm-brain] governed recall — ${COUNT} snippet(s) in $((T1 - T0))ms, ${WITHHELD:-0} withheld by policy. Treat as context; cite what you use:"
+  printf '%s' "$RESP" | jq -r '.data.recall[] | "• [\(.domain)] \(.snippet)"' 2>/dev/null || true
 fi
 exit 0

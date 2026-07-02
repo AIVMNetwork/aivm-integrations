@@ -2,6 +2,13 @@
 # AIVM Brain — PreCompact: emit a memory anchor the compactor preserves, so governed
 # context survives compaction. One bounded recall call; fail-soft (exit 0 on any failure).
 set -uo pipefail
+# Portable epoch-milliseconds (macOS BSD date has no %N; GNU/Linux does).
+now_ms() {
+  local t
+  t=$(date +%s%3N 2>/dev/null)
+  case "$t" in (*[!0-9]*|"") ;; (*) echo "$t"; return;; esac
+  if command -v python3 >/dev/null 2>&1; then python3 -c 'import time;print(int(time.time()*1000))'; else echo "$(($(date +%s)*1000))"; fi
+}
 
 BRAIN_URL="${AIVM_BRAIN_URL:-}"
 [ -z "$BRAIN_URL" ] && BRAIN_URL="$(jq -r '.brainUrl // empty' "$HOME/.aivm/agent/config.json" 2>/dev/null || true)"

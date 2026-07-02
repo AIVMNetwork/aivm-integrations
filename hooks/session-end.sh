@@ -5,6 +5,13 @@
 # the session's usage metrics (numbers only — never session text). Timings land in
 # ~/.aivm/logs/sync.log so sync performance is measurable. Fail-soft everywhere.
 set -uo pipefail
+# Portable epoch-milliseconds (macOS BSD date has no %N; GNU/Linux does).
+now_ms() {
+  local t
+  t=$(date +%s%3N 2>/dev/null)
+  case "$t" in (*[!0-9]*|"") ;; (*) echo "$t"; return;; esac
+  if command -v python3 >/dev/null 2>&1; then python3 -c 'import time;print(int(time.time()*1000))'; else echo "$(($(date +%s)*1000))"; fi
+}
 
 BRAIN_URL="${AIVM_BRAIN_URL:-}"
 [ -z "$BRAIN_URL" ] && BRAIN_URL="$(jq -r '.brainUrl // empty' "$HOME/.aivm/agent/config.json" 2>/dev/null || true)"
@@ -23,7 +30,7 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
 
 # Detached worker (survives the host exiting): capture turns, then metrics, then log timings.
 (
-  T0=$(date +%s%3N 2>/dev/null || date +%s000)
+  T0=$(now_ms)
   CAPTURED=0
   if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
     IDX=0
@@ -41,7 +48,7 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
   if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
     METRICS="$(jq -sc '[.[] | select(.type=="assistant") | {m: (.message.model // ""), i: (.message.usage.input_tokens // 0), o: (.message.usage.output_tokens // 0)}] | select(length > 0) | {model: (map(.m) | map(select(. != "")) | last // ""), inputTokens: (map(.i) | add), outputTokens: (map(.o) | add), turns: length}' "$TRANSCRIPT" 2>/dev/null || true)"
   fi
-  T1=$(date +%s%3N 2>/dev/null || date +%s000)
+  T1=$(now_ms)
   SYNC_MS=$((T1 - T0))
   BODY="$(jq -nc --argjson metrics "${METRICS:-null}" --argjson cap "$CAPTURED" --argjson ms "$SYNC_MS" \
     '(if ($metrics | type) == "object" then {metrics: ($metrics + {syncMs: $ms, captured: $cap})} else {metrics: {syncMs: $ms, captured: $cap}} end)' 2>/dev/null)" || BODY='{}'
