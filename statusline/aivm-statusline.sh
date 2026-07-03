@@ -63,11 +63,13 @@ brain_host="${BRAIN_URL#*://}"; brain_host="${brain_host%%/*}"
 brain_role=""; brain_name=""
 if [ -f "$CACHE" ]; then
   cache_read=$(python3 -c "
-import json
+import json, re
+# Same control-char strip as the write side — belt-and-braces for stale/foreign caches.
+clean = lambda s: re.sub(r'[\x00-\x1f\x7f\x9b]', '', str(s))[:64]
 try:
     c = json.load(open('$CACHE'))
-    print(c.get('role',''))
-    print(c.get('orgName',''))
+    print(clean(c.get('role','')))
+    print(clean(c.get('orgName','')))
 except Exception:
     pass" 2>/dev/null)
   brain_role=$(printf '%s' "$cache_read" | sed -n '1p')
@@ -91,16 +93,20 @@ if [ -n "$AGENT_KEY" ] && [ "$cache_stale" = 1 ] && [ "$lock_fresh" = 0 ]; then
   mkdir -p "$AGENT_DIR" 2>/dev/null
   touch "$LOCK" 2>/dev/null
   (
+    umask 077   # cache holds member/role/domains — keep it private on shared machines
     resp=$(curl -sS --max-time 4 -H "Authorization: Bearer $AGENT_KEY" \
       "$BRAIN_URL/api/agent/context" 2>/dev/null) || resp=""
     printf '%s' "$resp" | python3 -c "
-import json, sys
+import json, re, sys
+# Server strings are untrusted for TERMINAL output: strip control chars (incl. ESC/CSI —
+# a hostile value could otherwise inject OSC sequences into a perpetually-rendered bar).
+clean = lambda s: re.sub(r'[\x00-\x1f\x7f\x9b]', '', str(s))[:64]
 try:
     d = json.loads(sys.stdin.read())
     m = d.get('member') or {}
-    out = {'memberName': m.get('name',''), 'role': m.get('role',''),
-           'orgName': d.get('org',{}).get('name','') if isinstance(d.get('org'), dict) else '',
-           'domains': d.get('domains', [])}
+    out = {'memberName': clean(m.get('name','')), 'role': clean(m.get('role','')),
+           'orgName': clean(d.get('org',{}).get('name','') if isinstance(d.get('org'), dict) else ''),
+           'domains': [clean(x) for x in (d.get('domains') or []) if isinstance(x, str)][:16]}
     if d.get('ok') and (out['memberName'] or out['role']):
         print(json.dumps(out))
 except Exception:

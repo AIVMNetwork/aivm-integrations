@@ -33,6 +33,14 @@ out=$(printf '%s' "$FIX" | bash "$RENDER")
 has "$out" "🧠 Acme" && ok "org name" || bad "org name missing: $out"
 has "$out" "(admin)" && ok "role" || bad "role missing: $out"
 
+echo "2b. hostile cache values -> ESC/control chars stripped before hitting the terminal"
+python3 -c 'import json; open("'"$HOME"'/.aivm/agent/status-cache.json","w").write(json.dumps({"role": "admin\u001b]52;c;ZXZpbA==", "orgName": "Acme\u001b[2JX"}))'
+out=$(printf '%s' "$FIX" | bash "$RENDER")
+if printf '%s' "$out" | grep -q $'\x1b\]52'; then bad "OSC-52 escape leaked to terminal"; else ok "OSC-52 stripped"; fi
+if printf '%s' "$out" | grep -q $'\x1b\[2J'; then bad "CSI clear-screen leaked"; else ok "CSI stripped"; fi
+has "$out" "(admin" && ok "role still displayed (cleaned)" || bad "role lost: $out"
+printf '%s' '{"memberName":"ceo@x.org","role":"admin","orgName":"Acme"}' > "$HOME/.aivm/agent/status-cache.json"
+
 echo "3. segment mode → segment only"
 out=$(bash "$RENDER" --segment </dev/null)
 has "$out" "🧠 Acme" && ok "segment renders" || bad "segment: $out"

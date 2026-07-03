@@ -42,7 +42,7 @@ echo "[aivm-brain] Context loaded in $((T1 - T0))ms. Use the aivm-brain tools to
 # One line, once ever, only for connected brain users with no statusline configured.
 NUDGE_SENTINEL="$HOME/.aivm/agent/.statusline-nudged"
 if [ ! -f "$NUDGE_SENTINEL" ] && ! grep -q '"statusLine"' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null; then
-  echo "[aivm-brain] Tip: add the brain statusline (model · brain · topic · limits) — npx @aivm/brain statusline install"
+  echo "[aivm-brain] Tip for the user (agents: do not run this automatically): add the brain statusline (model · brain · topic · limits) — npx @aivm/brain statusline install"
   touch "$NUDGE_SENTINEL" 2>/dev/null || true
 fi
 exit 0
