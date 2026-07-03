@@ -38,6 +38,9 @@ it does not create from scratch.
    inside the capture — never assert it clean.
 4. **Files go through `brain_upload`** (governed create: DLP-scanned, ACL-assigned,
    versioned, recorded) with a title, the right knowledge domain, and the content.
+   Uploading MANY files at once (a folder, an import)? Use **`brain_upload_batch`** —
+   one request carrying up to 100 docs — instead of a burst of single calls; it returns
+   per-document results and won't overload the brain.
 5. **Verify.** After capturing, confirm the tool returned ok. If it was denied, tell the
    user what was denied and why — never silently drop a capture.
 
