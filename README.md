@@ -44,6 +44,14 @@ The brain-wrap **skill** auto-fires near session exit — no command needed. Man
 - `/brain-status` — what's in your brain + sync state.
 - `/brain-push [folder]` — upload local notes/files into the governed brain (searchable immediately).
 
+## Statusline
+
+`statusline/aivm-statusline.sh` renders `● model · 🧠 brain (role) · topic · 5h/wk limits`
+in Claude Code's statusline. Install it with `npx @aivm/brain statusline install` — never
+by a hook. If you already have a statusline, we **compose**: your line stays yours, the
+brain segment is appended; the original is backed up and restored verbatim on uninstall.
+Render is cached-only (background refresh) — an unreachable brain never slows your terminal.
+
 ## Why it's different
 
 Unlike ungoverned memory plugins, every read and write is **permission-aware** (you only

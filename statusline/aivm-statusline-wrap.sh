@@ -15,8 +15,15 @@ set -u
 
 AGENT_DIR="$HOME/.aivm/agent"
 BACKUP="$AGENT_DIR/statusline-backup.json"
-RENDER="$AGENT_DIR/statusline/aivm-statusline.sh"
-[ -x "$RENDER" ] || RENDER="$(dirname "$0")/aivm-statusline.sh"
+# Renderer resolution: marketplace copy first (stable unversioned path — updates
+# with the plugin), then the CLI-installed copy, then a sibling (dev checkout).
+RENDER=""
+for c in "$HOME/.claude/plugins/marketplaces/aivm/statusline/aivm-statusline.sh" \
+         "$AGENT_DIR/statusline/aivm-statusline.sh" \
+         "$(dirname "$0")/aivm-statusline.sh"; do
+  [ -f "$c" ] && RENDER="$c" && break
+done
+[ -z "$RENDER" ] && exit 0
 
 input=$(cat 2>/dev/null || true)
 
@@ -27,20 +34,23 @@ except Exception: print('')" 2>/dev/null)
 
 orig_out=""
 if [ -n "$orig_cmd" ]; then
-  orig_out=$(printf '%s' "$input" | /bin/sh -c "$orig_cmd" 2>/dev/null | head -n 1)
+  orig_out=$(printf '%s' "$input" | /bin/sh -c "$orig_cmd" 2>/dev/null)
 fi
 
 if [ -z "$orig_out" ]; then
   # ponytail: broken/missing original → our full line beats an empty bar
-  printf '%s' "$input" | "$RENDER"
+  printf '%s' "$input" | bash "$RENDER"
   exit 0
 fi
 
-seg=$("$RENDER" --segment </dev/null 2>/dev/null || true)
+seg=$(bash "$RENDER" --segment </dev/null 2>/dev/null || true)
+first=$(printf '%s\n' "$orig_out" | sed -n '1p')
+rest=$(printf '%s\n' "$orig_out" | sed -n '2,$p')
 if [ -n "$seg" ]; then
   MUTED=$'\033[38;2;110;100;90m'; RESET=$'\033[0m'
-  printf '%s\n' "${orig_out}  ${MUTED}·${RESET}  ${seg}"
+  printf '%s\n' "${first}  ${MUTED}·${RESET}  ${seg}"
 else
-  printf '%s\n' "$orig_out"
+  printf '%s\n' "$first"
 fi
+[ -n "$rest" ] && printf '%s\n' "$rest"
 exit 0
