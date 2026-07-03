@@ -27,14 +27,16 @@ PROMPT="$(cat 2>/dev/null | jq -r '.prompt // empty' 2>/dev/null || true)"
 
 # Fast RECALL mode: retrieval-only, bounded snippets, no LLM synthesis — synthesized search is
 # 5-30s (too slow for a per-prompt hook), so this uses the recall path (local retrieval, top-K).
-BODY="$(jq -nc --arg q "$PROMPT" '{tool:"brain.search",args:{query:$q,recall:true,topK:5}}' 2>/dev/null)" || exit 0
+# format=context returns ONE compact, char-budgeted, injection-ready block (cited + dated), assembled AFTER
+# the ACL/DLP filter — drop it straight in, no JSON parsing.
+BODY="$(jq -nc --arg q "$PROMPT" '{tool:"brain.search",args:{query:$q,recall:true,topK:5,format:"context",maxChars:2000}}' 2>/dev/null)" || exit 0
 RESP="$(curl -fsS --max-time 6 -X POST -H "content-type: application/json" -H "Authorization: Bearer $AGENT_KEY" \
   --data "$BODY" "$BRAIN_URL/api/mcp/tools" 2>/dev/null)" || exit 0
 COUNT="$(printf '%s' "$RESP" | jq -r '(.data.recall // []) | length' 2>/dev/null || echo 0)"
-WITHHELD="$(printf '%s' "$RESP" | jq -r '.data.withheld // 0' 2>/dev/null || echo 0)"
+BLOCK="$(printf '%s' "$RESP" | jq -r '.data.contextBlock // empty' 2>/dev/null || true)"
 T1=$(now_ms)
-if [ "${COUNT:-0}" -gt 0 ]; then
-  echo "[aivm-brain] governed recall — ${COUNT} snippet(s) in $((T1 - T0))ms, ${WITHHELD:-0} withheld by policy. Treat as context; cite what you use:"
-  printf '%s' "$RESP" | jq -r '.data.recall[] | "• \(.title // .domain) — \(.snippet)"' 2>/dev/null || true
+if [ "${COUNT:-0}" -gt 0 ] && [ -n "$BLOCK" ]; then
+  echo "[aivm-brain] governed recall (${COUNT} in $((T1 - T0))ms):"
+  printf '%s\n' "$BLOCK"
 fi
 exit 0

@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Brain by AIVM \u2014 governed, verifiable memory for AI agents",
-    "version": "0.1.4"
+    "version": "0.1.5"
   },
   "plugins": [
     {
       "name": "brain-memory",
       "source": "./",
       "description": "Governed persistent memory for Claude Code: auto-recall on session start, ACL-filtered recall per prompt, session wrap + sync on exit \u2014 every access recorded to a tamper-evident ledger.",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "author": {
         "name": "AIVM"
       }
