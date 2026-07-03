@@ -21,8 +21,17 @@ AGENT_KEY="${AIVM_AGENT_KEY:-}"
 [ -z "$AGENT_KEY" ] && exit 0
 
 # The primer: org/member derived server-side from the agent key (one secret = full setup).
-CTX="$(curl -fsS --max-time 5 -H "Authorization: Bearer $AGENT_KEY" \
+# Status-aware: a ROTATED key (401) must NOT die silently — it means no context and no session sync,
+# and the user deserves to know exactly how to fix it (2026-07-02 field incident).
+RAW="$(curl -sS --max-time 5 -w '\n%{http_code}' -H "Authorization: Bearer $AGENT_KEY" \
   "$BRAIN_URL/api/agent/context?format=text" 2>/dev/null)" || exit 0
+CODE="${RAW##*$'\n'}"; CTX="${RAW%$'\n'*}"
+if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
+  echo "[aivm-brain] AGENT KEY REJECTED (HTTP $CODE) — likely rotated (a newly generated key invalidates the old one). Your sessions will NOT sync until you re-key:"
+  echo "[aivm-brain]   1. Get a fresh key: $BRAIN_URL/use/connect-agent   2. export AIVM_AGENT_KEY=<key> (or: npx @aivm/brain init --agent-key <key>)   3. Restart the session."
+  exit 0
+fi
+[ "$CODE" != "200" ] && exit 0
 [ -z "$CTX" ] && exit 0
 T1=$(now_ms)
 echo "$CTX"

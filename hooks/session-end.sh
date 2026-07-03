@@ -52,9 +52,11 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
   SYNC_MS=$((T1 - T0))
   BODY="$(jq -nc --argjson metrics "${METRICS:-null}" --argjson cap "$CAPTURED" --argjson ms "$SYNC_MS" \
     '(if ($metrics | type) == "object" then {metrics: ($metrics + {syncMs: $ms, captured: $cap})} else {metrics: {syncMs: $ms, captured: $cap}} end)' 2>/dev/null)" || BODY='{}'
-  curl -fsS --max-time 5 -X POST -H "content-type: application/json" -H "Authorization: Bearer $AGENT_KEY" \
-    --data "$BODY" "$BRAIN_URL/api/agent/capture" >/dev/null 2>&1 || true
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) session=$SESSION captured=$CAPTURED sync_ms=$SYNC_MS" >> "$LOG_DIR/sync.log" 2>/dev/null || true
+  # Log the HTTP status too (2026-07-02): captured=0 with status=401 means a ROTATED KEY (re-key via the
+  # Connect wizard), while status=000 means offline — before this, both looked like a mystery zero.
+  SYNC_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -X POST -H "content-type: application/json" -H "Authorization: Bearer $AGENT_KEY" \
+    --data "$BODY" "$BRAIN_URL/api/agent/capture" 2>/dev/null || echo 000)"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) session=$SESSION captured=$CAPTURED sync_ms=$SYNC_MS status=$SYNC_CODE" >> "$LOG_DIR/sync.log" 2>/dev/null || true
 ) </dev/null >/dev/null 2>&1 &
 disown 2>/dev/null || true
 
