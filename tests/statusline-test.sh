@@ -62,6 +62,14 @@ printf '%s' '{"version":1,"hadStatusLine":true,"original":{"command":"exit 1"}}'
 out=$(printf '%s' "$FIX" | bash "$WRAP")
 has "$out" "Fable 5" && ok "fallback full line" || bad "blank statusline: $out"
 
+echo "6b. wrapper prefers the marketplace renderer copy (plugin updates propagate)"
+mkdir -p "$HOME/.claude/plugins/marketplaces/aivm/statusline"
+printf '#!/usr/bin/env bash\necho MARKETPLACE-COPY\n' > "$HOME/.claude/plugins/marketplaces/aivm/statusline/aivm-statusline.sh"
+printf '%s' '{"version":1,"hadStatusLine":true,"original":{"command":"exit 1"}}' > "$HOME/.aivm/agent/statusline-backup.json"
+out=$(printf '%s' "$FIX" | bash "$WRAP")
+has "$out" "MARKETPLACE-COPY" && ok "marketplace copy wins" || bad "marketplace copy ignored: $out"
+rm -rf "$HOME/.claude/plugins"
+
 echo "7. render is fast even with stale cache + dead brain (background refresh, <2s)"
 touch -t 202001010000 "$HOME/.aivm/agent/status-cache.json"
 t0=$(date +%s)
