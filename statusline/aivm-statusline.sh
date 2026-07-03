@@ -76,22 +76,29 @@ except Exception:
   brain_name=$(printf '%s' "$cache_read" | sed -n '2p')
 fi
 
+# GNU `stat -c` first — BSD stat fails it cleanly with no stdout; the reverse is NOT true
+# (GNU `stat -f %m` "succeeds" printing filesystem info, poisoning the arithmetic below).
+mtime_of() {
+  m=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0)
+  case "$m" in (*[!0-9]*|"") m=0;; esac
+  printf '%s' "$m"
+}
+
 cache_stale=1
 if [ -f "$CACHE" ]; then
   now=$(date +%s)
-  mtime=$(stat -f %m "$CACHE" 2>/dev/null || stat -c %Y "$CACHE" 2>/dev/null || echo 0)
+  mtime=$(mtime_of "$CACHE")
   [ $((now - mtime)) -lt "$TTL" ] && cache_stale=0
 fi
-# ponytail: mtime lock is the single-flight guard; a crashed refresh self-heals after TTL
-lock_fresh=0
-if [ -f "$LOCK" ]; then
+# Single-flight guard: mkdir is ATOMIC (test-and-set in one syscall) — a plain touch-then-check
+# races when two parallel sessions render in the same instant. A crashed refresh leaves the
+# lock dir behind; it self-heals after TTL.
+if [ -d "$LOCK" ]; then
   now=$(date +%s)
-  lmtime=$(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || echo 0)
-  [ $((now - lmtime)) -lt "$TTL" ] && lock_fresh=1
+  [ $(($now - $(mtime_of "$LOCK"))) -ge "$TTL" ] && rmdir "$LOCK" 2>/dev/null
 fi
-if [ -n "$AGENT_KEY" ] && [ "$cache_stale" = 1 ] && [ "$lock_fresh" = 0 ]; then
-  mkdir -p "$AGENT_DIR" 2>/dev/null
-  touch "$LOCK" 2>/dev/null
+mkdir -p "$AGENT_DIR" 2>/dev/null
+if [ -n "$AGENT_KEY" ] && [ "$cache_stale" = 1 ] && mkdir "$LOCK" 2>/dev/null; then
   (
     umask 077   # cache holds member/role/domains — keep it private on shared machines
     resp=$(curl -sS --max-time 4 -H "Authorization: Bearer $AGENT_KEY" \
@@ -110,9 +117,9 @@ try:
     if d.get('ok') and (out['memberName'] or out['role']):
         print(json.dumps(out))
 except Exception:
-    pass" > "$CACHE.tmp" 2>/dev/null
-    if [ -s "$CACHE.tmp" ]; then mv "$CACHE.tmp" "$CACHE"; else rm -f "$CACHE.tmp"; touch "$CACHE" 2>/dev/null; fi
-    rm -f "$LOCK"
+    pass" > "$CACHE.tmp.$$" 2>/dev/null
+    if [ -s "$CACHE.tmp.$$" ]; then mv "$CACHE.tmp.$$" "$CACHE"; else rm -f "$CACHE.tmp.$$"; touch "$CACHE" 2>/dev/null; fi
+    rmdir "$LOCK" 2>/dev/null
   ) >/dev/null 2>&1 &
   disown 2>/dev/null || true
 fi
