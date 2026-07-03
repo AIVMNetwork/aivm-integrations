@@ -67,7 +67,7 @@ import json
 try:
     c = json.load(open('$CACHE'))
     print(c.get('role',''))
-    print(c.get('orgName','') or c.get('memberName',''))
+    print(c.get('orgName',''))
 except Exception:
     pass" 2>/dev/null)
   brain_role=$(printf '%s' "$cache_read" | sed -n '1p')

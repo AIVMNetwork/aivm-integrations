@@ -27,9 +27,11 @@ done
 
 input=$(cat 2>/dev/null || true)
 
+# Backup schema (written by `aivm-brain statusline install`):
+#   {"version":1, "hadStatusLine":bool, "original": {"type":"command","command":"..."} | null}
 orig_cmd=$(python3 -c "
 import json
-try: print(json.load(open('$BACKUP')).get('command',''))
+try: print(((json.load(open('$BACKUP')).get('original') or {}).get('command') or ''))
 except Exception: print('')" 2>/dev/null)
 
 orig_out=""

@@ -44,21 +44,21 @@ out=$(printf '%s' "$FIX" | bash "$RENDER")
 has "$out" "Ship the thing" && ok "topic file" || bad "topic file ignored: $out"
 
 echo "5. compose wrapper: original output preserved, segment appended"
-printf '%s' '{"command":"printf my-original-line"}' > "$HOME/.aivm/agent/statusline-backup.json"
+printf '%s' '{"version":1,"hadStatusLine":true,"original":{"type":"command","command":"printf my-original-line"}}' > "$HOME/.aivm/agent/statusline-backup.json"
 mkdir -p "$HOME/.aivm/agent/statusline"; cp "$RENDER" "$HOME/.aivm/agent/statusline/aivm-statusline.sh"; chmod +x "$HOME/.aivm/agent/statusline/aivm-statusline.sh"
 out=$(printf '%s' "$FIX" | bash "$WRAP")
 has "$out" "my-original-line" && ok "original preserved" || bad "original lost: $out"
 has "$out" "🧠 Acme" && ok "segment appended" || bad "segment not appended: $out"
 
 echo "5b. compose wrapper: multi-line original → segment on first line, rest passthrough"
-printf '%s' '{"command":"printf \"line-one\\nline-two\\n\""}' > "$HOME/.aivm/agent/statusline-backup.json"
+printf '%s' '{"version":1,"hadStatusLine":true,"original":{"command":"printf \"line-one\\nline-two\\n\""}}' > "$HOME/.aivm/agent/statusline-backup.json"
 out=$(printf '%s' "$FIX" | bash "$WRAP")
 first=$(printf '%s\n' "$out" | sed -n 1p); second=$(printf '%s\n' "$out" | sed -n 2p)
 has "$first" "line-one" && has "$first" "🧠 Acme" && ok "segment on first line" || bad "first line wrong: $first"
 [ "$second" = "line-two" ] && ok "rest passthrough untouched" || bad "rest mangled: $second"
 
 echo "6. compose wrapper: broken original → falls back to full brain line (never blank)"
-printf '%s' '{"command":"exit 1"}' > "$HOME/.aivm/agent/statusline-backup.json"
+printf '%s' '{"version":1,"hadStatusLine":true,"original":{"command":"exit 1"}}' > "$HOME/.aivm/agent/statusline-backup.json"
 out=$(printf '%s' "$FIX" | bash "$WRAP")
 has "$out" "Fable 5" && ok "fallback full line" || bad "blank statusline: $out"
 
