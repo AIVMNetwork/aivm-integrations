@@ -2,7 +2,7 @@
   "mcpServers": {
     "aivm-brain": {
       "command": "npx",
-      "args": ["-y", "@aivm/brain@0.2.8", "serve"]
+      "args": ["-y", "@aivm/brain@0.3.1", "serve"]
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "brain-memory",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Brain by AIVM \u2014 governed persistent memory for Claude Code. Auto-recall on session start, ACL-filtered recall per prompt, session wrap + sync on exit; every access recorded to a tamper-evident ledger.",
   "author": {
     "name": "AIVM"
