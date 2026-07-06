@@ -18,7 +18,12 @@ BRAIN_URL="${BRAIN_URL:-https://brain.aivm.io}"
 BRAIN_URL="${BRAIN_URL%/}"
 AGENT_KEY="${AIVM_AGENT_KEY:-}"
 [ -z "$AGENT_KEY" ] && AGENT_KEY="$(cat "$HOME/.aivm/agent/agent.key" 2>/dev/null || true)"
-[ -z "$AGENT_KEY" ] && exit 0
+# Missing key → governed context isn't loaded. Was silent — say so once at session start so the user
+# knows the brain isn't wired (matches the 401-loudness below).
+if [ -z "$AGENT_KEY" ]; then
+  echo "[aivm-brain] No agent key found (~/.aivm/agent/agent.key) — governed company context is NOT loaded. Connect the brain: $BRAIN_URL/use/connect-agent (or: npx @aivm/brain init --agent-key <key>), then restart."
+  exit 0
+fi
 
 # The primer: org/member derived server-side from the agent key (one secret = full setup).
 # Status-aware: a ROTATED key (401) must NOT die silently — it means no context and no session sync,
