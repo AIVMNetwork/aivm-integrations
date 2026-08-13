@@ -266,6 +266,18 @@ h1=$(hits)
 [ "$h1" -gt "$h0" ] && ok "re-key forces an immediate refresh (not after TTL)" || bad "no refresh after re-key ($h0 -> $h1)"
 printf '%s\n' "$KEY" > "$AG/agent.key"
 
+echo "10b. AC-9b — the same key pointed at a DIFFERENT host does not inherit an identity"
+# The cache is bound to the (key, host) PAIR, not to the key alone. AC-9 above covers the key
+# axis; without this, dropping the `rec["host"] == host` half of the binding check passes 93/93.
+# Assert on the FIRST render's stdout: 5b and 14 both discard it and assert on a second render,
+# by which point the detached writer has already replaced the record with a correctly host-scoped
+# one — laundering the read-time defect before any assertion can see it.
+seed ok 30 1 0            # attempt clock is NOW: a bound record would NOT refresh
+out=$(AIVM_BRAIN_URL="http://127.0.0.1:1" bash -c 'printf "%s" "$0" | bash "$1"' "$FIX" "$RENDER" 2>/dev/null | sed $'s/\033\\[[0-9;]*m//g')
+no_identity "$out" "same key, unproven host"
+has "$out" "127.0.0.1:1" && ok "renders the host it actually tried" || bad "host wrong: $out"
+wait_refresh
+
 echo "11. AC-10c — a dead brain does not become a retry storm"
 seed ok 60 1 400
 scenario 404 '{}'
