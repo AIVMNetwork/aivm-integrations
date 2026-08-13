@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # AIVM Brain statusline — ● model · 🧠 brain (role) · topic · limits
 # ====================================================================
-# Reads Claude Code's statusLine JSON on stdin (session_id, cwd,
-# model.display_name, rate_limits.{five_hour,seven_day}.used_percentage).
+# Reads Claude Code's statusLine JSON on stdin (session_id, cwd, model.display_name,
+# rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}). Claude Code exposes ONLY the
+# account-wide 5h + weekly windows — there is no per-model rate-limit field — so the model NAME is
+# shown and the two windows carry the % and reset time. resets_at (unix epoch s) omitted when absent.
 #
 # Modes:
 #   aivm-statusline.sh            full line (model · brain · topic · limits)
@@ -37,8 +39,12 @@ print(d.get('cwd', '') or d.get('workspace', {}).get('current_dir', ''))
 m = d.get('model', {}) or {}
 print(m.get('display_name', '') or m.get('id', ''))
 r = d.get('rate_limits', {}) or {}
-print((r.get('five_hour') or {}).get('used_percentage', ''))
-print((r.get('seven_day') or {}).get('used_percentage', ''))
+f = r.get('five_hour') or {}
+w = r.get('seven_day') or {}
+print(f.get('used_percentage', ''))
+print(w.get('used_percentage', ''))
+print(f.get('resets_at', ''))
+print(w.get('resets_at', ''))
 " 2>/dev/null)
 
 session_id=$(printf '%s' "$parsed" | sed -n '1p')
@@ -46,6 +52,8 @@ cwd=$(printf '%s' "$parsed" | sed -n '2p')
 model=$(printf '%s' "$parsed" | sed -n '3p')
 pct5=$(printf '%s' "$parsed" | sed -n '4p')
 pct7=$(printf '%s' "$parsed" | sed -n '5p')
+reset5=$(printf '%s' "$parsed" | sed -n '6p')
+reset7=$(printf '%s' "$parsed" | sed -n '7p')
 
 # ---- brain credentials (same resolution as the session-start hook) ----
 BRAIN_URL="${AIVM_BRAIN_URL:-}"
@@ -165,11 +173,20 @@ usage_color() {
   elif [ "$1" -ge 70 ]; then printf '%s' "$ORANGE"
   else printf '%s' "$ACCENT"; fi
 }
+# resets_at is unix epoch SECONDS (Claude Code docs). date -r (BSD) / date -d @ (GNU); omit if absent — never faked.
+reset_hm() {
+  case "$1" in (''|*[!0-9]*) return;; esac
+  date -r "$1" +%H:%M 2>/dev/null || date -d "@$1" +%H:%M 2>/dev/null || true
+}
 usage=""
-case "$pct5" in (''|*[!0-9]*) ;; (*) usage="$(usage_color "$pct5")5h ${pct5}%${RESET}";; esac
+r5=$(reset_hm "$reset5"); r7=$(reset_hm "$reset7")
+case "$pct5" in (''|*[!0-9]*) ;; (*)
+  seg5="5h ${pct5}%"; [ -n "$r5" ] && seg5="${seg5}${MUTED}→${r5}${RESET}$(usage_color "$pct5")"
+  usage="$(usage_color "$pct5")${seg5}${RESET}";; esac
 case "$pct7" in (''|*[!0-9]*) ;; (*)
   [ -n "$usage" ] && usage="${usage} ${MUTED}·${RESET} "
-  usage="${usage}$(usage_color "$pct7")wk ${pct7}%${RESET}";; esac
+  seg7="wk ${pct7}%"; [ -n "$r7" ] && seg7="${seg7}${MUTED}→${r7}${RESET}$(usage_color "$pct7")"
+  usage="${usage}$(usage_color "$pct7")${seg7}${RESET}";; esac
 
 out=""
 append() { [ -z "$1" ] && return; if [ -z "$out" ]; then out="$1"; else out="${out}${SEP}${1}"; fi; }
