@@ -172,6 +172,38 @@ out=$(cycle)
 [ "$(field lastSuccessAt)" = "$before_ok" ] && ok "non-API 200 did not advance the proof clock" || bad "non-API 200 advanced proof clock"
 has "$out" "key rejected" && bad "non-API 200 rendered as revocation" || ok "not 'key rejected'"
 
+echo "3c. AC-3c — a 200 that PARSES but fails the contract is not proof of anything"
+# AC-3b's fixture is HTML, so it dies in json.loads and never reaches the write-side
+# classifier at aivm-statusline.sh:271. This case does reach it. Dropping the `d.get("ok")`
+# conjunct there is a plausible refactor ("2xx + a member shape is proof enough") and without
+# this block it passes the whole suite, while stamping a FALSE PROOF into the cache: state=ok,
+# lastSuccessAt=now, bound to the real (key, host) pair and valid for the entire lease.
+# NOTE: deliberately NOT asserting no_identity here. `no_api` is an OUTAGE-class state, so the
+# PREVIOUSLY-PROVEN identity is correctly retained under lease with a degraded marker. The
+# invariant at stake is narrower: the org in THIS unproven response must never be adopted.
+for body in '{"ok":false,"member":{"name":"eve","role":"admin"},"org":{"name":"EvilOrg"}}' \
+            '{"member":{"name":"eve","role":"admin"},"org":{"name":"EvilOrg"}}'; do
+  case "$body" in *'"ok"'*) label="ok:false" ;; *) label="ok absent" ;; esac
+  seed ok 60 1 400
+  before_ok=$(field lastSuccessAt)
+  scenario 200 "$body"
+  out=$(cycle)
+  has "$out" "EvilOrg" && bad "$label: unproven org rendered -> $out" || ok "$label: unproven org not rendered"
+  [ "$(field state)" = "no_api" ] && ok "$label: state=no_api" || bad "$label: state=$(field state)"
+  [ "$(field lastSuccessAt)" = "$before_ok" ] && ok "$label: proof clock unchanged" || bad "$label: advanced the proof clock"
+done
+
+echo "3d. A 3xx is not a login either"
+# Neither suite exercised any 3xx before this. curl here has no -L, so a body-bearing
+# redirect needs a misconfigured proxy/LB — narrow, but the axis had zero coverage.
+seed ok 60 1 400
+before_ok=$(field lastSuccessAt)
+scenario 302 '{"ok":true,"member":{"name":"eve","role":"admin"},"org":{"name":"EvilOrg"}}'
+out=$(cycle)
+has "$out" "EvilOrg" && bad "3xx: unproven org rendered -> $out" || ok "3xx: unproven org not rendered"
+[ "$(field lastSuccessAt)" = "$before_ok" ] && ok "3xx: proof clock unchanged" || bad "3xx: advanced the proof clock"
+has "$out" "key rejected" && bad "3xx rendered as revocation" || ok "3xx is NOT 'key rejected'"
+
 echo "4. AC-5 — a brain OUTAGE keeps the identity and never accuses the key (503)"
 seed ok 60 1 400
 scenario 503 '{"error":"auth store unavailable"}'
@@ -212,6 +244,11 @@ seed ok 60 1 400
 out=$(AIVM_BRAIN_URL="http://127.0.0.1:1" bash -c 'printf "%s" "$0" | bash "$1"' "$FIX" "$RENDER" 2>/dev/null | sed $'s/\033\\[[0-9;]*m//g')
 has "$out" "127.0.0.1:1" && ok "renders the host it actually tried" || bad "host wrong: $out"
 has "$out" "key rejected" && bad "refused connection rendered as revocation" || ok "refused is NOT 'key rejected'"
+# Assert the invariant DIRECTLY. Round 3 found this block caught a write-side host-binding
+# drop only by accident: the leaked org name displaced the expected host string, so the
+# `127.0.0.1:1` assertion above failed for the wrong reason. A test that catches a defect
+# incidentally stops catching it the moment the rendering changes.
+no_identity "$out" "refused connection, unproven host"
 
 echo "6. AC-2 — a FAILED refresh cannot make a stale identity look fresh"
 # The discriminator: lastSuccessAt is 30 minutes old while the FILE MTIME IS NOW.
