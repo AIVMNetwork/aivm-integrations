@@ -181,6 +181,18 @@ has "$out" "brain unavailable" && ok "503 carries a degraded marker" || bad "503
 has "$out" "key rejected" && bad "503 rendered as revocation (2026-07-02 class)" || ok "503 is NOT 'key rejected'"
 [ "$(field state)" = "unavailable" ] && ok "state=unavailable" || bad "state=$(field state)"
 
+echo "4b. AC-5 — RATE LIMITING is an outage, not a revocation (429)"
+# 429 is a 4xx, so the plausible wrong refactor buckets it with 401/403 as "key problem"
+# and tells the operator to re-key over a rate limit. That is the 2026-07-02 silent-death
+# class in a different HTTP code, and it is the whole point of this case.
+seed ok 60 1 400
+scenario 429 '{"error":"rate limited"}'
+out=$(cycle)
+has "$out" "admin" && ok "identity retained through 429" || bad "429 erased the identity: $out"
+has "$out" "brain unavailable" && ok "429 carries a degraded marker" || bad "429 marker missing: $out"
+has "$out" "key rejected" && bad "429 rendered as revocation (rate-limited is NOT revoked)" || ok "429 is NOT 'key rejected'"
+[ "$(field state)" = "unavailable" ] && ok "state=unavailable" || bad "state=$(field state)"
+
 echo "5. TIMEOUT — curl exit 28, identity retained, rendered as offline"
 seed ok 60 1 400
 before_ok=$(field lastSuccessAt)
@@ -211,8 +223,8 @@ no_identity "$out" "expired lease (mtime fresh, proof 30m old)"
 has "$out" "offline" && ok "reads 'offline'" || bad "reason missing: $out"
 has "$out" "30m" && ok "reports the true age 30m" || bad "age wrong: $out"
 
-echo "7. AC-6 — no failure outcome may advance the proof clock (5 outcomes)"
-for spec in "401|{}" "403|{}" "404|{}" "503|{}" "hang|"; do
+echo "7. AC-6 — no failure outcome may advance the proof clock (6 outcomes)"
+for spec in "401|{}" "403|{}" "404|{}" "429|{}" "503|{}" "hang|"; do
   code="${spec%%|*}"; body="${spec#*|}"
   seed ok 120 1 400
   t_ok=$(field lastSuccessAt); t_try=$(field lastAttemptAt)
