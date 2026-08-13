@@ -25,21 +25,39 @@ has "$out" "5h 42%" && ok "5h limit" || bad "5h limit missing: $out"
 has "$out" "wk 91%" && ok "wk limit" || bad "wk limit missing: $out"
 has "$out" "🧠" && bad "brain segment leaked with no key" || ok "no brain segment"
 
-echo "2. cached brain data → 🧠 segment with name+role (no network: bogus URL)"
-printf '%s' '{"memberName":"ceo@x.org","role":"admin","orgName":"Acme"}' > "$HOME/.aivm/agent/status-cache.json"
 echo "ak_test" > "$HOME/.aivm/agent/agent.key"
 export AIVM_BRAIN_URL="http://127.0.0.1:1"   # closed port: proves render never needs the network
+
+# The cache is an AUTH-STATE record (M1, 2026-08-13), not an identity blob: it is BOUND to the
+# (key, host) that proved it and carries a proof clock the renderer leases the identity against.
+# A flat v1 blob is deliberately treated as "never validated" — see tests/statusline-auth-state-test.sh.
+# seed_cache <role> <orgName> [seconds-since-last-attempt]
+seed_cache() {
+  SC_ROLE="$1" SC_ORG="$2" SC_TRY="${3:-0}" python3 <<'PY' > "$HOME/.aivm/agent/status-cache.json"
+import hashlib, json, os, sys, time
+now = int(time.time())
+fp = hashlib.sha256(b"ak_test").hexdigest()[:16]
+json.dump({"v": 2, "host": "127.0.0.1:1", "keyFp": fp, "state": "ok",
+           "httpCode": 200, "curlExit": 0,
+           "lastAttemptAt": now - int(os.environ["SC_TRY"]), "lastSuccessAt": now,
+           "identity": {"memberName": "ceo@x.org", "role": os.environ["SC_ROLE"],
+                        "orgName": os.environ["SC_ORG"], "domains": []}}, sys.stdout)
+PY
+}
+
+echo "2. cached brain data → 🧠 segment with name+role (no network: bogus URL)"
+seed_cache "admin" "Acme"
 out=$(printf '%s' "$FIX" | bash "$RENDER")
 has "$out" "🧠 Acme" && ok "org name" || bad "org name missing: $out"
 has "$out" "(admin)" && ok "role" || bad "role missing: $out"
 
 echo "2b. hostile cache values -> ESC/control chars stripped before hitting the terminal"
-python3 -c 'import json; open("'"$HOME"'/.aivm/agent/status-cache.json","w").write(json.dumps({"role": "admin\u001b]52;c;ZXZpbA==", "orgName": "Acme\u001b[2JX"}))'
+seed_cache "$(printf 'admin\033]52;c;ZXZpbA==')" "$(printf 'Acme\033[2JX')"
 out=$(printf '%s' "$FIX" | bash "$RENDER")
 if printf '%s' "$out" | grep -q $'\x1b\]52'; then bad "OSC-52 escape leaked to terminal"; else ok "OSC-52 stripped"; fi
 if printf '%s' "$out" | grep -q $'\x1b\[2J'; then bad "CSI clear-screen leaked"; else ok "CSI stripped"; fi
 has "$out" "(admin" && ok "role still displayed (cleaned)" || bad "role lost: $out"
-printf '%s' '{"memberName":"ceo@x.org","role":"admin","orgName":"Acme"}' > "$HOME/.aivm/agent/status-cache.json"
+seed_cache "admin" "Acme"
 
 echo "3. segment mode → segment only"
 out=$(bash "$RENDER" --segment </dev/null)
@@ -79,7 +97,9 @@ has "$out" "MARKETPLACE-COPY" && ok "marketplace copy wins" || bad "marketplace 
 rm -rf "$HOME/.claude/plugins"
 
 echo "7. render is fast even with stale cache + dead brain (background refresh, <2s)"
-touch -t 202001010000 "$HOME/.aivm/agent/status-cache.json"
+# Staleness now comes from the record's ATTEMPT clock, not the file mtime (a failed refresh must
+# never be able to advance freshness). An old lastAttemptAt is what actually fires the background curl.
+seed_cache "admin" "Acme" 4000
 t0=$(date +%s)
 printf '%s' "$FIX" | bash "$RENDER" >/dev/null
 t1=$(date +%s)
