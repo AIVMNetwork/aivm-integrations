@@ -1,0 +1,58 @@
+name: CI
+
+# The statusline is an AUTH-STATE surface: it renders which brain you are signed in to and as
+# whom. Its gates therefore run on every push and PR, on BOTH a GNU and a BSD userland, because
+# the renderer deliberately branches on `stat -c` vs `stat -f` and `date -d @` vs `date -r`, and a
+# regression in either is invisible until a user's bar quietly lies to them.
+#
+# Why this file exists (2026-08-13, M1): this repository had NO CI AT ALL. tests/statusline-test.sh
+# was a manual RELEASING.md step and nothing re-ran it between releases, so the only gate on the
+# script that renders your identity was a human remembering to type it. An unrun gate reads as
+# coverage while providing none — worse than having no gate at all.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  statusline:
+    name: statusline (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]   # GNU vs BSD userland — the renderer branches on both
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax — every tracked *.sh
+        run: |
+          fail=0
+          for f in $(git ls-files '*.sh'); do
+            bash -n "$f" || { echo "::error file=$f::bash syntax error"; fail=1; }
+          done
+          exit $fail
+
+      - name: Statusline regression suite
+        run: bash tests/statusline-test.sh
+
+      # M1 — the invariant gate. Drives the REAL renderer through REAL bash against a scripted
+      # local brain returning 401 / 403 / 404 / 5xx / a non-API 200 / a hang (curl timeout), plus a
+      # closed port and a cold cache, and asserts that a revoked key can never keep rendering the
+      # last-known-good identity. Observed RED on e67b705 (35 failures) and on three named wrong
+      # variants before the fix landed — see tests/statusline-auth-state-test.sh.
+      - name: Statusline auth-state gate (M1)
+        run: bash tests/statusline-auth-state-test.sh
+
+      - name: Generated-copy drift guard
+        env:
+          # The @aivm/brain CLI package (which embeds a generated copy of these scripts) lives in a
+          # DIFFERENT repository, so this half of the guard cannot run from a single-repo checkout.
+          # It is MANDATORY at RELEASING.md step 4b, where both trees are present. The skip is
+          # explicit and visible in the log here — never silent.
+          AIVM_DRIFT_SKIP_IF_MISSING: "1"
+        run: bash tests/embed-drift-check.sh
