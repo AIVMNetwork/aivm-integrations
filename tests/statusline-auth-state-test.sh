@@ -95,6 +95,21 @@ if ident == "1":
 sys.stdout.write(json.dumps(r))' "$1" "$2" "$3" "$4" > "$AG/status-cache.json"
 }
 
+# --- F2 support: the marker COLOUR, read from the raw render (deliberately NOT ANSI-stripped) ---
+marker_colour() {
+  printf '%s' "$FIX" | bash "$RENDER" 2>/dev/null | python3 -c '
+import re,sys
+raw=sys.stdin.buffer.read().decode("utf-8","replace")
+i=len(raw)
+for w in ("key rejected","access denied","no brain API","brain unavailable","offline","unverified","stale"):
+    j=raw.find(w)
+    if j>=0: i=min(i,j)
+m=None
+for x in re.finditer(r"\x1b\[([0-9;]+)m", raw[:i]): m=x.group(1)
+C={"38;2;229;72;77":"RED","38;2;207;108;77":"AMBER","38;2;110;100;90":"MUTED"}
+print(C.get(m, m or "NONE"))'
+}
+
 render() { printf '%s' "$FIX" | bash "$RENDER" 2>/dev/null | sed $'s/\033\\[[0-9;]*m//g'; }
 
 wait_refresh() {
@@ -260,6 +275,18 @@ no_identity "$out" "expired lease (mtime fresh, proof 30m old)"
 has "$out" "offline" && ok "reads 'offline'" || bad "reason missing: $out"
 has "$out" "30m" && ok "reports the true age 30m" || bad "age wrong: $out"
 
+echo "6b. F5 — a STALE but valid session must not read like a revoked key"
+# The one REASON word with no assertion anywhere in either gate: state=ok with an EXPIRED lease.
+# This is the woke-from-sleep case, and swapping its word for a revocation word passed the whole
+# original 84+21 gate. attempt clock = now keeps the refresh from racing the assertion.
+wait_refresh
+seed ok 1200 1 0
+out=$(render)
+has "$out" "stale" && ok "expired lease on a healthy record reads 'stale'" || bad "stale wording: $out"
+has "$out" "key rejected" && bad "a stale session rendered as revocation" || ok "stale is NOT 'key rejected'"
+has "$out" "access denied" && bad "a stale session rendered as denial" || ok "stale is NOT 'access denied'"
+no_identity "$out" "expired lease on a healthy record"
+
 echo "7. AC-6 — no failure outcome may advance the proof clock (6 outcomes)"
 for spec in "401|{}" "403|{}" "404|{}" "429|{}" "503|{}" "hang|"; do
   code="${spec%%|*}"; body="${spec#*|}"
@@ -301,6 +328,10 @@ no_identity "$out" "re-keyed"
 wait_refresh
 h1=$(hits)
 [ "$h1" -gt "$h0" ] && ok "re-key forces an immediate refresh (not after TTL)" || bad "no refresh after re-key ($h0 -> $h1)"
+# F1: the WRITE path must not carry the old key's identity into the new key's record.
+out=$(render)
+no_identity "$out" "re-keyed, AFTER the refresh under the new key completed"
+[ -z "$(field identity)" ] && ok "no identity inherited across a re-key" || bad "identity inherited across re-key: $(field identity)"
 printf '%s\n' "$KEY" > "$AG/agent.key"
 
 echo "10b. AC-9b — the same key pointed at a DIFFERENT host does not inherit an identity"
@@ -330,6 +361,22 @@ h1=$(hits)
 [ $((h1 - h0)) -le 1 ] && ok "10 renders after a 404 -> $((h1-h0)) further refresh(es)" \
                        || bad "retry storm: $((h1-h0)) refreshes from 10 renders"
 
+echo "11b. F4 — a RE-KEYED agent against a dead brain does not become a retry storm either"
+# 11 above covers the BOUND record only. After a re-key the record is UNBOUND, which takes the
+# other side of the refresh decision (`not bound` short-circuits the attempt-clock throttle).
+# A writer that fails to persist anything leaves the pair unbound forever = one curl per render.
+wait_refresh
+seed ok 60 1 0
+printf '%s\n' "ak_live_2_storm" > "$AG/agent.key"
+scenario 503 '{"error":"down"}'
+cycle >/dev/null
+h0=$(hits)
+i=0; while [ "$i" -lt 6 ]; do render >/dev/null; wait_refresh; i=$((i+1)); done
+h1=$(hits)
+[ $((h1 - h0)) -le 1 ] && ok "6 renders after a re-key into a 503 -> $((h1-h0)) further refresh(es)" \
+                       || bad "re-key retry storm: $((h1-h0)) refreshes from 6 renders"
+printf '%s\n' "$KEY" > "$AG/agent.key"
+
 echo "12. HAPPY PATH — a proven identity renders exactly as before, with no marker"
 seed cold none 0 400
 rm -f "$AG/status-cache.json"
@@ -357,6 +404,41 @@ t0=$(date +%s)
 AIVM_BRAIN_URL="http://127.0.0.1:1" bash -c 'printf "%s" "$0" | bash "$1" >/dev/null 2>&1' "$FIX" "$RENDER"
 t1=$(date +%s)
 [ $((t1 - t0)) -le 2 ] && ok "non-blocking ($((t1-t0))s)" || bad "render blocked $((t1-t0))s"
+
+echo "15. F2 — the failure CLASS is carried by COLOUR, not only by wording"
+# Every other assertion in this file strips ANSI. These four do not: the invariant names the
+# colours (401/403 = red revocation, 404/429/5xx = amber outage) and nothing was checking them.
+# attempt clock = 0s ago keeps a bound record from refreshing, so nothing races these renders.
+wait_refresh   # section 14 leaves a detached refresh in flight; it would clobber the seed below
+for spec in "unauthorized|RED" "forbidden|RED" "no_api|AMBER" "unavailable|AMBER"; do
+  st="${spec%%|*}"; want="${spec#*|}"
+  wait_refresh
+  seed "$st" 60 1 0
+  got=$(marker_colour)
+  [ "$got" = "$want" ] && ok "$st marker is $want" || bad "$st marker is $got, expected $want"
+done
+wait_refresh
+seed not_a_real_state 60 1 0
+got=$(marker_colour)
+[ "$got" = "MUTED" ] && ok "never-validated marker is MUTED (not an accusation)" || bad "cold marker is $got"
+
+echo "16. F3 — the label is only ever a value the server actually supplied"
+# /api/agent/context does not emit "org" today, so this is the PRODUCTION body shape. Both
+# fixtures elsewhere always include an org, which is why a defaulted placeholder went unnoticed.
+rm -f "$AG/status-cache.json"
+scenario 200 '{"ok":true,"member":{"name":"ceo@x.org","role":"admin"}}'
+out=$(cycle)
+has "$out" "$HOSTV" && ok "no org supplied -> label falls back to the host" || bad "invented a label: $out"
+has "$out" "(admin)" && ok "role still renders on the production body" || bad "role missing: $out"
+
+echo "16b. F3 — a 2xx that carries no member proves nothing"
+seed ok 60 1 400
+before_ok=$(field lastSuccessAt)
+scenario 200 '{"ok":true}'
+out=$(cycle)
+[ "$(field state)" = "no_api" ] && ok "ok:true with no member -> no_api" || bad "state=$(field state)"
+[ "$(field lastSuccessAt)" = "$before_ok" ] && ok "ok:true with no member did not advance the proof clock" || bad "advanced the proof clock"
+case "$out" in *"(MUT)"*|*"MUT "*) bad "fabricated a role/org from an empty body -> $out";; *) ok "no fabricated label from an empty body";; esac
 
 echo
 echo "passed=$pass failed=$fail"
