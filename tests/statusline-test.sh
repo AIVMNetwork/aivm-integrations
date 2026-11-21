@@ -105,6 +105,49 @@ printf '%s' "$FIX" | bash "$RENDER" >/dev/null
 t1=$(date +%s)
 [ $((t1 - t0)) -le 2 ] && ok "non-blocking ($((t1-t0))s)" || bad "render blocked $((t1-t0))s"
 
+echo "8. display fields cannot carry terminal control sequences or shift lines"
+EVIL='{"session_id":"s2","cwd":"/tmp/pr\u001b[31moj\nFAKE","model":{"display_name":"Fa\u001b]0;pwn\u0007ble"}}'
+out=$(printf '%s' "$EVIL" | bash "$RENDER")
+has "$out" $'\e]0;' && bad "OSC from model reached the terminal" || ok "model OSC stripped"
+has "$out" "Fa]0;pwnble" && ok "model text kept, controls removed" || bad "model mangled: $out"
+has "$out" $'\e[31moj' && bad "CSI from cwd reached the terminal" || ok "cwd CSI stripped"
+printf 'Top\033[2Jic\n' > "$HOME/.claude/session-topics/s2.txt"
+out=$(printf '%s' "$EVIL" | bash "$RENDER")
+has "$out" $'\e[2J' && bad "CSI from topic file reached the terminal" || ok "topic CSI stripped"
+has "$out" "Top[2Jic" && ok "topic text kept" || bad "topic missing: $out"
+
+echo "9. agent state dir is repaired to owner-only"
+chmod 777 "$HOME/.aivm" "$HOME/.aivm/agent"
+printf '%s' "$FIX" | bash "$RENDER" >/dev/null
+[ "$(ls -ld "$HOME/.aivm/agent" | cut -c5-10)" = "------" ] && [ "$(ls -ld "$HOME/.aivm" | cut -c5-10)" = "------" ] \
+  && ok "~/.aivm and ~/.aivm/agent are 0700" || bad "perms: $(ls -ld "$HOME/.aivm" "$HOME/.aivm/agent")"
+
+echo "10. wrapper runs the backup command only when it is owner-only"
+printf '%s' '{"version":1,"hadStatusLine":true,"original":{"command":"echo BACKUP-RAN"}}' > "$HOME/.aivm/agent/statusline-backup.json"
+chmod 600 "$HOME/.aivm/agent/statusline-backup.json"
+out=$(printf '%s' "$FIX" | bash "$WRAP"); has "$out" "BACKUP-RAN" && ok "owner-only backup runs" || bad "backup ignored: $out"
+chmod 666 "$HOME/.aivm/agent/statusline-backup.json"
+out=$(printf '%s' "$FIX" | bash "$WRAP"); has "$out" "BACKUP-RAN" && bad "world-writable backup was run" || ok "world-writable backup refused"
+rm -f "$HOME/.aivm/agent/statusline-backup.json"
+
+echo "11. cleartext non-loopback brain URL: no request, no brain segment"
+seed_cache "admin" "Acme" 4000
+rm -rf "$HOME/.aivm/agent/status-cache.refreshing"
+out=$(printf '%s' "$FIX" | AIVM_BRAIN_URL="http://brain.example.com" bash "$RENDER")
+has "$out" "🧠" && bad "brain segment for cleartext URL: $out" || ok "no brain segment"
+[ -d "$HOME/.aivm/agent/status-cache.refreshing" ] && bad "refresh started for cleartext URL" || ok "no refresh started"
+
+echo "12. background refresh keeps the key out of curl argv"
+SHIM="$(mktemp -d)"; REALCURL="$(command -v curl)"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/argv.log"\nexec "%s" "$@"\n' "$SHIM" "$REALCURL" > "$SHIM/curl"; chmod +x "$SHIM/curl"
+echo "ak_test_ARGVMARK" > "$HOME/.aivm/agent/agent.key"
+seed_cache "admin" "Acme" 4000; rm -rf "$HOME/.aivm/agent/status-cache.refreshing"
+printf '%s' "$FIX" | PATH="$SHIM:$PATH" bash "$RENDER" >/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$SHIM/argv.log" ] && break; sleep 0.3; done
+[ -s "$SHIM/argv.log" ] && ok "refresh called curl" || bad "no refresh curl observed"
+grep -q ARGVMARK "$SHIM/argv.log" 2>/dev/null && bad "key in curl argv" || ok "key not in curl argv"
+rm -rf "$SHIM"; echo "ak_test" > "$HOME/.aivm/agent/agent.key"
+
 echo
 echo "passed=$pass failed=$fail"
 [ "$fail" = 0 ]

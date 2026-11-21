@@ -29,9 +29,17 @@ input=$(cat 2>/dev/null || true)
 
 # Backup schema (written by `aivm-brain statusline install`):
 #   {"version":1, "hadStatusLine":bool, "original": {"type":"command","command":"..."} | null}
-orig_cmd=$(python3 -c "
-import json
-try: print(((json.load(open('$BACKUP')).get('original') or {}).get('command') or ''))
+# The backup command is run through /bin/sh, so trust it only when it and its directory are ours,
+# not symlinks, and not writable by group or others. Otherwise fall back to the brain full line.
+orig_cmd=$(AIVM_SL_BACKUP="$BACKUP" python3 -c "
+import json, os, stat
+p = os.environ['AIVM_SL_BACKUP']
+def mine(path):
+    st = os.lstat(path)
+    return st.st_uid == os.geteuid() and not stat.S_ISLNK(st.st_mode) and not st.st_mode & 0o022
+try:
+    if not (mine(os.path.dirname(p)) and mine(p)): raise ValueError
+    print(((json.load(open(p)).get('original') or {}).get('command') or ''))
 except Exception: print('')" 2>/dev/null)
 
 orig_out=""
