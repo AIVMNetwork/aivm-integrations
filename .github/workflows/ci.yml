@@ -48,6 +48,10 @@ jobs:
       - name: Statusline auth-state gate (M1)
         run: bash tests/statusline-auth-state-test.sh
 
+      # The hooks carry the agent key and session text: keep both out of curl argv, HTTPS only.
+      - name: Hooks key-transport gate
+        run: bash tests/hooks-key-transport-test.sh
+
       - name: Generated-copy drift guard
         env:
           # The @aivm/brain CLI package (which embeds a generated copy of these scripts) lives in a
