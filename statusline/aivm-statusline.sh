@@ -32,6 +32,9 @@ set -u
 
 MODE="full"
 [ "${1:-}" = "--segment" ] && MODE="segment"
+# Agent state (key, cache, backup command) must never be group/world accessible, even when the
+# login umask is permissive: set it before anything below can create a file or directory.
+umask 077
 
 AGENT_DIR="$HOME/.aivm/agent"
 CACHE="$AGENT_DIR/status-cache.json"
@@ -41,23 +44,38 @@ IDENTITY_LEASE=900   # 3x TTL: survives two missed refreshes, expires any silent
 
 input=$(cat 2>/dev/null || true)
 
+# Every display field is printed through c(): one line each, with C0/C1 controls (ESC, BEL, CSI)
+# and bidi overrides removed, so workspace names and topic files cannot drive the terminal.
 parsed=$(printf '%s' "$input" | /usr/bin/env python3 -c "
-import sys, json
+import sys, json, os, re
+bad = re.compile('[\\x00-\\x1f\\x7f-\\x9f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]')
+c = lambda v: bad.sub('', str(v))
 try:
     d = json.loads(sys.stdin.read())
 except Exception:
     d = {}
-print(d.get('session_id', ''))
-print(d.get('cwd', '') or d.get('workspace', {}).get('current_dir', ''))
+sid = c(d.get('session_id', ''))
+cwd = c(d.get('cwd', '') or (d.get('workspace', {}) or {}).get('current_dir', ''))
+print(sid)
+print(cwd)
 m = d.get('model', {}) or {}
-print(m.get('display_name', '') or m.get('id', ''))
+print(c(m.get('display_name', '') or m.get('id', '')))
 r = d.get('rate_limits', {}) or {}
 f = r.get('five_hour') or {}
 w = r.get('seven_day') or {}
-print(f.get('used_percentage', ''))
-print(w.get('used_percentage', ''))
-print(f.get('resets_at', ''))
-print(w.get('resets_at', ''))
+print(c(f.get('used_percentage', '')))
+print(c(w.get('used_percentage', '')))
+print(c(f.get('resets_at', '')))
+print(c(w.get('resets_at', '')))
+topic = ''
+if re.fullmatch(r'[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}', sid):
+    try:
+        with open(os.path.join(os.path.expanduser('~'), '.claude', 'session-topics', sid + '.txt'), errors='replace') as fh:
+            topic = fh.readline()
+    except Exception:
+        pass
+print(c(topic)[:80])
+print(c(os.path.basename(cwd.rstrip('/'))))
 " 2>/dev/null)
 
 session_id=$(printf '%s' "$parsed" | sed -n '1p')
@@ -67,6 +85,8 @@ pct5=$(printf '%s' "$parsed" | sed -n '4p')
 pct7=$(printf '%s' "$parsed" | sed -n '5p')
 reset5=$(printf '%s' "$parsed" | sed -n '6p')
 reset7=$(printf '%s' "$parsed" | sed -n '7p')
+topic_line=$(printf '%s' "$parsed" | sed -n '8p')
+cwd_base=$(printf '%s' "$parsed" | sed -n '9p')
 
 # ---- brain credentials (same resolution as the session-start hook) ----
 BRAIN_URL="${AIVM_BRAIN_URL:-}"
@@ -78,7 +98,14 @@ BRAIN_URL="${BRAIN_URL:-https://brain.aivm.io}"
 BRAIN_URL="${BRAIN_URL%/}"
 AGENT_KEY="${AIVM_AGENT_KEY:-}"
 [ -z "$AGENT_KEY" ] && AGENT_KEY="$(cat "$AGENT_DIR/agent.key" 2>/dev/null || true)"
-brain_host="${BRAIN_URL#*://}"; brain_host="${brain_host%%/*}"
+# The key goes only to HTTPS, or plain HTTP on a canonical loopback host (local dev). Anything
+# else: behave as if there were no key, so nothing is sent and no brain segment renders.
+case "$BRAIN_URL" in
+  https://*) ;;
+  http://*) [[ "${BRAIN_URL#http://}" =~ ^(localhost|127\.0\.0\.1|\[::1\])(:[0-9]{1,5})?(/.*)?$ ]] || AGENT_KEY="" ;;
+  *) AGENT_KEY="" ;;
+esac
+brain_host="${BRAIN_URL#*://}"; brain_host="${brain_host%%/*}"; brain_host="${brain_host//[[:cntrl:]]/}"
 
 # ---- ONE decision function: read + bind + lease, in a single choke point ----
 # Everything that can emit a role happens HERE. Bash below only formats. Five bash branches
@@ -211,14 +238,18 @@ if [ -d "$LOCK" ]; then
   [ $(($now - $(mtime_of "$LOCK"))) -ge "$TTL" ] && rmdir "$LOCK" 2>/dev/null
 fi
 mkdir -p "$AGENT_DIR" 2>/dev/null
+# Repair state dirs created earlier under a looser umask (owner-only; skipped if not ours).
+for d in "$HOME/.aivm" "$AGENT_DIR"; do [ -O "$d" ] && chmod go-rwx "$d" 2>/dev/null; done
 if [ -n "$AGENT_KEY" ] && [ "$brain_refresh" = 1 ] && mkdir "$LOCK" 2>/dev/null; then
   (
     umask 077   # cache holds member/role/domains — keep it private on shared machines
     # Capture the HTTP STATUS. Without -w, `curl -sS` exits 0 on a 404/401/503 alike, so a
     # revoked key, a wrong host and an outage arrive indistinguishable. Same pattern as
     # hooks/session-start.sh:31-33 — deliberately the one convention, not a new invention.
+    # The header comes from a process-substitution fd (printf is a builtin): the key never
+    # reaches curl's argv, which other local accounts can read in the process table.
     RAW=$(curl -sS --max-time 4 -w '\n%{http_code}' \
-      -H "Authorization: Bearer $AGENT_KEY" "$BRAIN_URL/api/agent/context" 2>/dev/null); rc=$?
+      -H @<(printf 'Authorization: Bearer %s\n' "$AGENT_KEY") "$BRAIN_URL/api/agent/context" 2>/dev/null); rc=$?
     CODE="${RAW##*$'\n'}"; BODY="${RAW%$'\n'*}"
     [ "$rc" != 0 ] && CODE="000"
     case "$CODE" in (''|*[!0-9]*) CODE="000";; esac
@@ -345,12 +376,8 @@ if [ "$MODE" = "segment" ]; then
 fi
 
 # ---- full line ----
-topic=""
-topic_file="$HOME/.claude/session-topics/$session_id.txt"
-if [ -n "$session_id" ] && [ -f "$topic_file" ]; then
-  topic=$(head -n 1 "$topic_file" 2>/dev/null | tr -d '\r\n' | cut -c1-80)
-fi
-[ -z "$topic" ] && [ -n "$cwd" ] && topic=$(basename "$cwd" 2>/dev/null)
+topic="$topic_line"   # read and sanitized in the parse block above
+[ -z "$topic" ] && topic="$cwd_base"
 
 model_short=$(printf '%s' "$model" | cut -c1-22)
 
