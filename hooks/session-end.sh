@@ -20,6 +20,8 @@ BRAIN_URL="${BRAIN_URL%/}"
 AGENT_KEY="${AIVM_AGENT_KEY:-}"
 [ -z "$AGENT_KEY" ] && AGENT_KEY="$(cat "$HOME/.aivm/agent/agent.key" 2>/dev/null || true)"
 [ -z "$AGENT_KEY" ] && exit 0
+. "$(dirname "${BASH_SOURCE[0]}")/brain-http.sh"
+brain_url_ok "$BRAIN_URL" || exit 0
 
 INPUT="$(cat 2>/dev/null || true)"
 SESSION="$(printf '%s' "$INPUT" | jq -r '.session_id // "session"' 2>/dev/null || echo session)"
@@ -38,8 +40,8 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
       [ -z "$TURN" ] && continue
       BODY="$(jq -nc --argjson t "$TURN" --arg sid "$SESSION" --argjson i "$IDX" \
         '{tool:"brain.capture",args:{episode:{sessionId:$sid,turnIndex:$i,role:$t.role,text:$t.text}}}' 2>/dev/null)" || { IDX=$((IDX+1)); continue; }
-      curl -fsS --max-time 5 -X POST -H "content-type: application/json" -H "Authorization: Bearer $AGENT_KEY" \
-        --data "$BODY" "$BRAIN_URL/api/mcp/tools" >/dev/null 2>&1 && CAPTURED=$((CAPTURED+1)) || true
+      printf '%s' "$BODY" | brain_curl -fsS --max-time 5 -X POST -H "content-type: application/json" \
+        --data-binary @- "$BRAIN_URL/api/mcp/tools" >/dev/null 2>&1 && CAPTURED=$((CAPTURED+1)) || true
       IDX=$((IDX+1))
     done < <(jq -rc 'select(.type=="user" or .type=="assistant") | {role:.type, text:((.message.content // "") | if type=="array" then (map(.text // "")|join(" ")) else tostring end)} | select(.text | length > 0)' "$TRANSCRIPT" 2>/dev/null | tail -20)
   fi
@@ -54,8 +56,8 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
     '(if ($metrics | type) == "object" then {metrics: ($metrics + {syncMs: $ms, captured: $cap})} else {metrics: {syncMs: $ms, captured: $cap}} end)' 2>/dev/null)" || BODY='{}'
   # Log the HTTP status too (2026-07-02): captured=0 with status=401 means a ROTATED KEY (re-key via the
   # Connect wizard), while status=000 means offline — before this, both looked like a mystery zero.
-  SYNC_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -X POST -H "content-type: application/json" -H "Authorization: Bearer $AGENT_KEY" \
-    --data "$BODY" "$BRAIN_URL/api/agent/capture" 2>/dev/null || echo 000)"
+  SYNC_CODE="$(printf '%s' "$BODY" | brain_curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -X POST -H "content-type: application/json" \
+    --data-binary @- "$BRAIN_URL/api/agent/capture" 2>/dev/null || echo 000)"
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) session=$SESSION captured=$CAPTURED sync_ms=$SYNC_MS status=$SYNC_CODE" >> "$LOG_DIR/sync.log" 2>/dev/null || true
 ) </dev/null >/dev/null 2>&1 &
 disown 2>/dev/null || true
