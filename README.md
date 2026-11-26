@@ -11,10 +11,10 @@ claude plugin marketplace add AIVMNetwork/aivm-integrations
 claude plugin install brain-memory@aivm
 ```
 
-Then set your credentials (get them from **brain.aivm.io → Connect Claude Code**):
+Then set your credentials (get them from **heybrain.io → Connect Claude Code**):
 
 ```
-export AIVM_BRAIN_URL="https://brain.aivm.io"
+export AIVM_BRAIN_URL="https://api.heybrain.io"
 export AIVM_AGENT_KEY="ak_..."     # your one-time agent key
 ```
 

@@ -12,7 +12,7 @@ now_ms() {
 
 BRAIN_URL="${AIVM_BRAIN_URL:-}"
 [ -z "$BRAIN_URL" ] && BRAIN_URL="$(jq -r '.brainUrl // empty' "$HOME/.aivm/agent/config.json" 2>/dev/null || true)"
-BRAIN_URL="${BRAIN_URL:-https://brain.aivm.io}"
+BRAIN_URL="${BRAIN_URL:-https://api.heybrain.io}"
 BRAIN_URL="${BRAIN_URL%/}"
 AGENT_KEY="${AIVM_AGENT_KEY:-}"
 [ -z "$AGENT_KEY" ] && AGENT_KEY="$(cat "$HOME/.aivm/agent/agent.key" 2>/dev/null || true)"
