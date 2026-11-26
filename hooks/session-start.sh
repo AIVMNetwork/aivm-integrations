@@ -26,7 +26,7 @@ fi
 # Missing key → governed context isn't loaded. Was silent — say so once at session start so the user
 # knows the brain isn't wired (matches the 401-loudness below).
 if [ -z "$AGENT_KEY" ]; then
-  echo "[aivm-brain] No agent key found (~/.aivm/agent/agent.key) — governed company context is NOT loaded. Connect the brain: $BRAIN_URL/use/connect-agent (or: npx @aivm/brain init --agent-key <key>), then restart."
+  echo "[aivm-brain] No agent key found (~/.aivm/agent/agent.key) — governed company context is NOT loaded. Connect the brain: $BRAIN_URL/use/connect-agent (or: npx @heybrain/heybrain init --agent-key <key>), then restart."
   exit 0
 fi
 
@@ -38,7 +38,7 @@ RAW="$(brain_curl -sS --max-time 5 -w '\n%{http_code}' \
 CODE="${RAW##*$'\n'}"; CTX="${RAW%$'\n'*}"
 if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
   echo "[aivm-brain] AGENT KEY REJECTED (HTTP $CODE) — likely rotated (a newly generated key invalidates the old one). Your sessions will NOT sync until you re-key:"
-  echo "[aivm-brain]   1. Get a fresh key: $BRAIN_URL/use/connect-agent   2. export AIVM_AGENT_KEY=<key> (or: npx @aivm/brain init --agent-key <key>)   3. Restart the session."
+  echo "[aivm-brain]   1. Get a fresh key: $BRAIN_URL/use/connect-agent   2. export AIVM_AGENT_KEY=<key> (or: npx @heybrain/heybrain init --agent-key <key>)   3. Restart the session."
   exit 0
 fi
 [ "$CODE" != "200" ] && exit 0
@@ -53,7 +53,7 @@ echo "[aivm-brain] Context loaded in $((T1 - T0))ms. Use the aivm-brain tools to
 # One line, once ever, only for connected brain users with no statusline configured.
 NUDGE_SENTINEL="$HOME/.aivm/agent/.statusline-nudged"
 if [ ! -f "$NUDGE_SENTINEL" ] && ! grep -q '"statusLine"' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null; then
-  echo "[aivm-brain] Tip for the user (agents: do not run this automatically): add the brain statusline (model · brain · topic · limits) — npx @aivm/brain statusline install"
+  echo "[aivm-brain] Tip for the user (agents: do not run this automatically): add the brain statusline (model · brain · topic · limits) — npx @heybrain/heybrain statusline install"
   touch "$NUDGE_SENTINEL" 2>/dev/null || true
 fi
 exit 0

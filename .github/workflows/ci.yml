@@ -54,7 +54,7 @@ jobs:
 
       - name: Generated-copy drift guard
         env:
-          # The @aivm/brain CLI package (which embeds a generated copy of these scripts) lives in a
+          # The @heybrain/heybrain CLI package (which embeds a generated copy of these scripts) lives in a
           # DIFFERENT repository, so this half of the guard cannot run from a single-repo checkout.
           # It is MANDATORY at RELEASING.md step 4b, where both trees are present. The skip is
           # explicit and visible in the log here — never silent.
