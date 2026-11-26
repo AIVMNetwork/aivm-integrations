@@ -32,7 +32,7 @@ WARN_SENTINEL="$HOME/.aivm/agent/.rekey-warned-${SID:-nosession}"
 # knew the brain wasn't wired and had to manually say "check the AIVM brain" (the reported symptom).
 if [ -z "$AGENT_KEY" ]; then
   if [ ! -f "$WARN_SENTINEL" ]; then
-    echo "[aivm-brain] No agent key found (~/.aivm/agent/agent.key) — the brain is NOT being consulted this session. Connect it: https://heybrain.io/dashboard/agents/setup (or: npx @heybrain/heybrain init --agent-key <key>), then restart."
+    echo "[aivm-brain] No agent key found (~/.aivm/agent/agent.key) — the brain is NOT being consulted this session. Connect it: get a key at https://heybrain.io/dashboard/agents/setup, then export AIVM_AGENT_KEY=<key> (or save it to ~/.aivm/agent/agent.key, chmod 600) and restart."
     touch "$WARN_SENTINEL" 2>/dev/null || true
   fi
   exit 0
