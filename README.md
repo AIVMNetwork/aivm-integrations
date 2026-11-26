@@ -11,10 +11,10 @@ claude plugin marketplace add AIVMNetwork/aivm-integrations
 claude plugin install brain-memory@aivm
 ```
 
-Then set your credentials (get them from **brain.aivm.io → Connect Claude Code**):
+Then set your credentials (get them from **heybrain.io → Connect Claude Code**):
 
 ```
-export AIVM_BRAIN_URL="https://brain.aivm.io"
+export AIVM_BRAIN_URL="https://api.heybrain.io"
 export AIVM_AGENT_KEY="ak_..."     # your one-time agent key
 ```
 
@@ -47,7 +47,7 @@ The brain-wrap **skill** auto-fires near session exit — no command needed. Man
 ## Statusline
 
 `statusline/aivm-statusline.sh` renders `● model · 🧠 brain (role) · topic · 5h/wk limits`
-in Claude Code's statusline. Install it with `npx @aivm/brain statusline install` — never
+in Claude Code's statusline. Install it with `npx @heybrain/heybrain statusline install` — never
 by a hook. If you already have a statusline, we **compose**: your line stays yours, the
 brain segment is appended; the original is backed up and restored verbatim on uninstall.
 Render is cached-only (background refresh) — an unreachable brain never slows your terminal.
@@ -60,4 +60,4 @@ access, never your content), and **agent-attributed** (each capture carries your
 identity). Bring your own model key — nothing you connect trains a model.
 
 MIT licensed. The memory backend runs at your brain (`AIVM_BRAIN_URL`); the plugin is thin
-wiring over the published `@aivm/brain` MCP server.
+wiring over the published `@heybrain/heybrain` MCP server.

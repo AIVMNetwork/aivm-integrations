@@ -2,7 +2,7 @@
 # Generated-copy drift guard — run: bash tests/embed-drift-check.sh
 # ==================================================================
 # THE CANONICAL SOURCE OF THE STATUSLINE IS THIS REPO: statusline/*.sh
-# The CLI package (@aivm/brain) ships EMBEDDED copies in
+# The CLI package (@heybrain/heybrain) ships EMBEDDED copies in
 # packages/aivm-brain/src/statusline-scripts.ts, produced by
 # packages/aivm-brain/scripts/embed-statusline.cjs, which READS the files here and
 # OVERWRITES that TypeScript file wholesale.
@@ -33,7 +33,7 @@ if [ -z "$PKG" ]; then
 fi
 
 if [ -z "$PKG" ]; then
-  echo "embed-drift-check: the @aivm/brain package was not found."
+  echo "embed-drift-check: the @heybrain/heybrain package was not found."
   echo "  Point at it with:  AIVM_BRAIN_PKG=/path/to/packages/aivm-brain bash tests/embed-drift-check.sh"
   if [ "${AIVM_DRIFT_SKIP_IF_MISSING:-0}" = "1" ]; then
     # Set EXPLICITLY by the workflow, never silently: this repo's CI checks out only this repo,

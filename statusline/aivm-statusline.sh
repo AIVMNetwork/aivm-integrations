@@ -94,7 +94,7 @@ BRAIN_URL="${AIVM_BRAIN_URL:-}"
 import json,sys
 try: print(json.load(open('$AGENT_DIR/config.json')).get('brainUrl',''))
 except Exception: print('')" 2>/dev/null)"
-BRAIN_URL="${BRAIN_URL:-https://brain.aivm.io}"
+BRAIN_URL="${BRAIN_URL:-https://api.heybrain.io}"
 BRAIN_URL="${BRAIN_URL%/}"
 AGENT_KEY="${AIVM_AGENT_KEY:-}"
 [ -z "$AGENT_KEY" ] && AGENT_KEY="$(cat "$AGENT_DIR/agent.key" 2>/dev/null || true)"

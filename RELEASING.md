@@ -1,13 +1,16 @@
 # Releasing brain-memory
 
-Every plugin release ships an EXACT pinned `@aivm/brain` version (.mcp.json) — the plugin is
+Every plugin release ships an EXACT pinned `@heybrain/heybrain` version (.mcp.json) — the plugin is
 the update channel; the pin makes plugin↔CLI pairs atomic and testable (no npx cache drift).
 
+The CLI was published as `@aivm/brain` up to 0.3.7 and is now `@heybrain/heybrain` (0.4.0+). A pin still
+naming `@aivm/brain` keeps working; move it to the new name at the next plugin release.
+
 Checklist:
-1. Bump the pin in `.mcp.json` to the published `@aivm/brain` version.
+1. Bump the pin in `.mcp.json` to the published `@heybrain/heybrain` version.
 2. Bump `version` in `.claude-plugin/plugin.json` AND `.claude-plugin/marketplace.json` (keep in sync).
 3. GATE: run the agent-matrix claude-code row in aivm-brain-poc against the exact pin —
-   `AIVM_BRAIN_SPEC=@aivm/brain@<pin> bash qa/agent-matrix/run.sh claude-code` — must be green.
+   `AIVM_BRAIN_SPEC=@heybrain/heybrain@<pin> bash qa/agent-matrix/run.sh claude-code` — must be green.
 4. `bash tests/statusline-test.sh` green.
 4a. `bash tests/statusline-auth-state-test.sh` green — the M1 gate. The statusline renders WHO YOU
     ARE SIGNED IN AS; this suite is what proves a revoked key stops claiming the last-known-good
